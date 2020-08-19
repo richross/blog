@@ -7,21 +7,66 @@
 trigger:
 - master
 
-variables:
-  version: 1
-
 pool:
   vmImage: 'ubuntu-latest'
 
 jobs:
 - job: Update_version
   steps:
+  - task: KubectlInstaller@0
+    name: Install_Kubectl
+    inputs:
+      kubectlVersion: 'latest'
+  
+  - task: AzureCLI@2
+    name: Get_kubeconfig
+    inputs:
+      azureSubscription: 'RRoss Sandbox(b339dd1c-2183-48bf-b4f8-1cd6576286bc)'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: 'az aks get-credentials -g aks-rg-rich15966 -n aksrich15966'
+
+  - task: Bash@3
+    name: Get_current_prod
+    inputs: 
+     targetType: inline
+     script: 
+       color=`kubectl get svc production -o yaml | grep color | awk -F ' ' '{print $2}`'
+       echo $color
+       if [ "$color" = "blue" ]; then
+         echo "##vso[task.setvariable variable=color]green"
+       else
+         echo "##vso[task.setvariable variable=color]blue"
+       fi
   - task: HelmInstaller@1
     inputs:
      helmVersionToInstall: '3.0.0'
+
   - task: HelmDeploy@0
+    name: Update_version
     inputs:
       connectionType: 'Kubernetes Service Connection'
       kubernetesServiceConnection: 'AKSBlueGreen-aksrich15966-bluegreen-1597837665187'
       namespace: 'bluegreen'
-      command: 'ls'
+      command: 'upgrade'
+      chartType: FilePath
+      chartPath: 'helm-blue-green/blue-green/'
+      releaseName: 'bluegreen'
+      overrideValues: '$(color).version=$(version)'
+      arguments: '--reuse-values'
+  - task: Bash@3
+    inputs:
+      targetType: 'inline'
+      script: 'kubectl rollout status deploy/$(color)'
+  - task: HelmDeploy@0
+    name: Flip_prod
+    inputs:
+      connectionType: 'Kubernetes Service Connection'
+      kubernetesServiceConnection: 'AKSBlueGreen-aksrich15966-bluegreen-1597837665187'
+      command: 'upgrade'
+      namespace: 'bluegreen'
+      chartType: FilePath
+      chartPath: 'helm-blue-green/blue-green/'
+      releaseName: 'bluegreen'
+      overrideValues: 'production=$(color)'
+      arguments: '--reuse-values'
