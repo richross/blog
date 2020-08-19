@@ -13,11 +13,15 @@ variables:
 pool:
   vmImage: 'ubuntu-latest'
 
-steps:
-  - script: echo Hello, world!
-    displayName: 'run one line script'
-  
-  - script: 
-      echo Add other tasks to build and test
-      echo See https://aka.ms/yaml
-    displayName: 'run multi-line script'
+jobs:
+- job: Update_version
+  steps:
+  - task: HelmInstaller@1
+    inputs:
+     helmVersionToInstall: '3.0.0'
+  - task: HelmDeploy@0
+    inputs:
+      connectionType: 'Kubernetes Service Connection'
+      kubernetesServiceConnection: 'AKSBlueGreen-aksrich15966-bluegreen-1597837665187'
+      namespace: 'bluegreen'
+      command: 'ls'
